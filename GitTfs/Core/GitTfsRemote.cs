@@ -904,6 +904,8 @@ namespace Sep.Git.Tfs.Core
 
         private void WithWorkspace(TfsChangesetInfo parentChangeset, Action<ITfsWorkspace> action)
         {
+            Tfs.PreloadCheckinPolicies();
+
             //are there any subtrees?
             var subtrees = globals.Repository.GetSubtrees(this);
             if (subtrees.Any())

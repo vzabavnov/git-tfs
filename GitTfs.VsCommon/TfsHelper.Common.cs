@@ -32,6 +32,7 @@ namespace Sep.Git.Tfs.VsCommon
         private readonly IContainer _container;
         protected TfsTeamProjectCollection _server;
         private static bool _resolverInstalled;
+        private static bool _preloaded;
 
         public TfsHelperBase(TextWriter stdout, TfsApiBridge bridge, IContainer container)
         {
@@ -611,6 +612,7 @@ namespace Sep.Git.Tfs.VsCommon
         }
 
         Dictionary<string, Workspace> _workspaces = new Dictionary<string, Workspace>();
+        
 
         public void WithWorkspace(string localDirectory, IGitTfsRemote remote, IEnumerable<Tuple<string, string>> mappings, TfsChangesetInfo versionToFetch, Action<ITfsWorkspace> action)
         {
@@ -708,61 +710,66 @@ namespace Sep.Git.Tfs.VsCommon
         {
             using (var parentForm = new ParentForm())
             {
-                var t = Task.Run(() => PreloadCheckinPolicies());
-
                 parentForm.Show();
 
                 var dialog = Activator.CreateInstance(GetCheckinDialogType(), workspace.VersionControlServer);
-
-                t.Wait();
 
                 return dialog.Call<int>("Show", parentForm.Handle, workspace, pendingChanges, pendingChanges,
                                         checkinComment, null, null, checkedInfos);
             }
         }
 
-        private void PreloadCheckinPolicies()
+        protected abstract string UserExtensionsLocation { get; }
+
+        protected abstract string RegistryCheckinPolicies64KeyName { get; }
+
+        protected abstract string RegistryCheckinPoliciesKeyName { get; }
+
+
+        public virtual void PreloadCheckinPolicies()
         {
-            var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                @"AppData\Local\Microsoft\VisualStudio\14.0\Extensions");
-
-            foreach (var directory in Directory.GetDirectories(path))
+            if (!_preloaded)
             {
-                var packages = Directory.GetFiles(directory, "*.pkgdef");
-                if (packages.Length == 1)
+                _preloaded = true;
+
+                var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), UserExtensionsLocation);
+
+                foreach (var directory in Directory.GetDirectories(path))
                 {
-                    var lines = File.ReadAllLines(packages[0]);
-                    if (lines.Length > 1 && string.Equals(lines[0], @"[$RootKey$\TeamFoundation\SourceControl\Checkin Policies]"))
+                    var packages = Directory.GetFiles(directory, "*.pkgdef");
+                    if (packages.Length == 1)
                     {
-                        var regex = new Regex(@"\""(?<name>.+)\""=\""\$PackageFolder\$\\\1.dll\""");
-                        for (int i = 1; i < lines.Length; i++)
+                        var lines = File.ReadAllLines(packages[0]);
+                        if (lines.Length > 1 && string.Equals(lines[0], @"[$RootKey$\TeamFoundation\SourceControl\Checkin Policies]"))
                         {
-                            var match = regex.Match(lines[i]);
-                            if (match.Success)
+                            var regex = new Regex(@"\""(?<name>.+)\""=\""\$PackageFolder\$\\\1.dll\""");
+                            for (int i = 1; i < lines.Length; i++)
                             {
-                                var name = match.Groups["name"].Value;
-                                var fileName = directory + "\\" + name + ".dll";
-                                Debug.Assert(File.Exists(fileName));
-
-                                var key = Environment.Is64BitOperatingSystem
-                                    ? @"SOFTWARE\Wow6432Node\Microsoft\VisualStudio\14.0\TeamFoundation\SourceControl\Checkin Policies"
-                                    : @"SOFTWARE\Microsoft\VisualStudio\14.0\TeamFoundation\SourceControl\Checkin Policies";
-
-                                using (var reg = Registry.LocalMachine.OpenSubKey(key, RegistryKeyPermissionCheck.ReadWriteSubTree))
+                                var match = regex.Match(lines[i]);
+                                if (match.Success)
                                 {
-                                    Debug.Assert(reg != null);
+                                    var name = match.Groups["name"].Value;
+                                    var fileName = directory + "\\" + name + ".dll";
+                                    Debug.Assert(File.Exists(fileName));
 
-                                    var val = reg.GetValue(name);
-                                    if (val == null)
+                                    var key = Environment.Is64BitOperatingSystem ? RegistryCheckinPolicies64KeyName : RegistryCheckinPoliciesKeyName;
+
+                                    using (var reg = Registry.LocalMachine.OpenSubKey(key, RegistryKeyPermissionCheck.ReadWriteSubTree))
                                     {
-                                        reg.SetValue(name, fileName, RegistryValueKind.String);
-                                    }
-                                }
+                                        Debug.Assert(reg != null);
 
-                                Assembly.LoadFile(fileName);
+                                        var val = reg.GetValue(name);
+                                        if (val == null)
+                                        {
+                                            reg.SetValue(name, fileName, RegistryValueKind.String);
+                                        }
+                                    }
+
+                                    Assembly.LoadFile(fileName);
+                                }
                             }
-                        }
                         
+                        }
                     }
                 }
             }

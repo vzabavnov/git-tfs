@@ -41,5 +41,20 @@ namespace Sep.Git.Tfs.Vs2010
                     new TfsTeamProjectCollection(uri, GetCredential(), new UICredentialsProvider()) :
                     new TfsTeamProjectCollection(uri, new UICredentialsProvider());
         }
+
+        protected override string UserExtensionsLocation
+        {
+            get { return @"AppData\Local\Microsoft\VisualStudio\10.0\Extensions"; }
+        }
+
+        protected override string RegistryCheckinPolicies64KeyName
+        {
+            get { return @"SOFTWARE\Wow6432Node\Microsoft\VisualStudio\10.0\TeamFoundation\SourceControl\Checkin Policies"; }
+        }
+
+        protected override string RegistryCheckinPoliciesKeyName
+        {
+            get { return @"SOFTWARE\Microsoft\VisualStudio\10.0\TeamFoundation\SourceControl\Checkin Policies"; }
+        }
     }
 }

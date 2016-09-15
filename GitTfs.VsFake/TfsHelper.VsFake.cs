@@ -523,6 +523,11 @@ namespace Sep.Git.Tfs.VsFake
             throw new NotImplementedException();
         }
 
+        public void PreloadCheckinPolicies()
+        {
+            
+        }
+
         #endregion
 
         private class FakeVersionControlServer : IVersionControlServer
